@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Indicações — Aprenda e Ganhe</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+<div class="container">
+    <div class="top-bar">
+        <h2>👥 Indicar Amigos</h2>
+        <a href="../Dashboard/index.html" style="text-decoration:none; font-size:22px;">🏠</a>
+    </div>
+
+    <div class="card text-center">
+        <p class="text-muted">O seu código de indicação</p>
+        <h2 id="referralCode">-----</h2>
+        <button class="btn" id="copyBtn">📋 Copiar código</button>
+        <p class="text-muted" style="margin-top:10px;">Ganhe 15% de bónus vitalício sobre tudo o que os seus indicados ganharem!</p>
+    </div>
+
+    <div class="card">
+        <div class="stat-grid">
+            <div class="stat-box"><div class="value" id="totalReferrals">0</div><div class="label">Indicados</div></div>
+            <div class="stat-box"><div class="value" id="activeReferrals">0</div><div class="label">Ativos (30 dias)</div></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Seus indicados</h3>
+        <div id="referralsList"><p class="text-muted">Carregando...</p></div>
+    </div>
+</div>
+
+<nav class="nav-bottom">
+    <a href="../Dashboard/index.html"><span class="icon">🏠</span>Início</a>
+    <a href="../Quiz/index.html"><span class="icon">🎯</span>Quiz</a>
+    <a href="../Wallet/index.html"><span class="icon">💰</span>Carteira</a>
+    <a href="../Referral/index.html" class="active"><span class="icon">👥</span>Indicar</a>
+    <a href="../Profile/index.html"><span class="icon">👤</span>Perfil</a>
+</nav>
+
+<script src="../../services/api.js"></script>
+<script>
+requireAuth();
+
+async function loadReferrals() {
+    try {
+        const data = await apiRequest('/referral');
+        document.getElementById('referralCode').textContent = data.referralCode;
+        document.getElementById('totalReferrals').textContent = data.totalReferrals;
+        document.getElementById('activeReferrals').textContent = data.activeReferrals;
+
+        const container = document.getElementById('referralsList');
+        if (data.referrals.length === 0) {
+            container.innerHTML = '<p class="text-muted">Ainda não tem indicados. Compartilhe o seu código!</p>';
+            return;
+        }
+        container.innerHTML = data.referrals.map(r => `
+            <div class="list-item">
+                <span>${r.name}</span>
+                <span class="badge">${r.status}</span>
+            </div>
+        `).join('');
+    } catch (err) { console.error(err); }
+}
+
+document.getElementById('copyBtn').addEventListener('click', () => {
+    const code = document.getElementById('referralCode').textContent;
+    navigator.clipboard.writeText(code).then(() => {
+        alert('Código copiado!');
+    });
+});
+
+loadReferrals();
+</script>
+</body>
+</html>
