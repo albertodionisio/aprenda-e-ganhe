@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Perfil — Aprenda e Ganhe</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+<div class="container">
+    <div class="top-bar">
+        <h2>👤 Perfil</h2>
+        <a href="../Dashboard/index.html" style="text-decoration:none; font-size:22px;">🏠</a>
+    </div>
+
+    <div class="card text-center">
+        <div style="font-size:48px;">🧑</div>
+        <h3 id="profileName">-</h3>
+        <p class="text-muted" id="profileEmail">-</p>
+        <span class="badge" id="premiumBadge" style="display:none;">⭐ Premium</span>
+    </div>
+
+    <div class="card">
+        <h3>🏆 Conquistas</h3>
+        <div id="achievementsList"><p class="text-muted">Carregando...</p></div>
+    </div>
+
+    <div class="card">
+        <h3>Dados pessoais</h3>
+        <div id="errorBox" class="error-box"></div>
+        <form id="profileForm">
+            <label>Nome</label>
+            <input type="text" id="name">
+
+            <label>Telefone</label>
+            <input type="tel" id="phone">
+
+            <label>Idioma</label>
+            <select id="language">
+                <option value="pt">Português</option>
+                <option value="en">English</option>
+            </select>
+
+            <button type="submit" class="btn">Salvar Alterações</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Alterar Senha</h3>
+        <div id="pwErrorBox" class="error-box"></div>
+        <form id="passwordForm">
+            <label>Senha atual</label>
+            <input type="password" id="currentPassword" required>
+
+            <label>Nova senha</label>
+            <input type="password" id="newPassword" required minlength="6">
+
+            <button type="submit" class="btn outline">Alterar Senha</button>
+        </form>
+    </div>
+
+    <button class="btn danger" id="logoutBtn">Sair da Conta</button>
+</div>
+
+<nav class="nav-bottom">
+    <a href="../Dashboard/index.html"><span class="icon">🏠</span>Início</a>
+    <a href="../Quiz/index.html"><span class="icon">🎯</span>Quiz</a>
+    <a href="../Wallet/index.html"><span class="icon">💰</span>Carteira</a>
+    <a href="../Referral/index.html"><span class="icon">👥</span>Indicar</a>
+    <a href="../Profile/index.html" class="active"><span class="icon">👤</span>Perfil</a>
+</nav>
+
+<script src="../../services/api.js"></script>
+<script>
+requireAuth();
+
+async function loadProfile() {
+    try {
+        const data = await apiRequest('/profile');
+        const u = data.user;
+        document.getElementById('profileName').textContent = u.name;
+        document.getElementById('profileEmail').textContent = u.email;
+        document.getElementById('name').value = u.name;
+        document.getElementById('phone').value = u.phone || '';
+        document.getElementById('language').value = u.language || 'pt';
+        if (u.is_premium) document.getElementById('premiumBadge').style.display = 'inline-block';
+    } catch (err) { console.error(err); }
+}
+
+async function loadAchievements() {
+    try {
+        const data = await apiRequest('/gamification/achievements');
+        const container = document.getElementById('achievementsList');
+        if (data.achievements.length === 0) {
+            container.innerHTML = '<p class="text-muted">Ainda sem conquistas. Continue respondendo quizzes!</p>';
+            return;
+        }
+        container.innerHTML = data.achievements.map(a => `
+            <div class="list-item">
+                <span>${a.icon} ${a.title}</span>
+                <span class="text-muted">${new Date(a.unlocked_at).toLocaleDateString('pt-PT')}</span>
+            </div>
+        `).join('');
+    } catch (err) { console.error(err); }
+}
+
+document.getElementById('profileForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('errorBox');
+    errorBox.style.display = 'none';
+    try {
+        const data = await apiRequest('/profile', 'PUT', {
+            name: document.getElementById('name').value,
+            phone: document.getElementById('phone').value,
+            language: document.getElementById('language').value
+        });
+        setUser({ ...getUser(), ...data.user });
+        alert('Perfil atualizado com sucesso!');
+    } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.style.display = 'block';
+    }
+});
+
+document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('pwErrorBox');
+    errorBox.style.display = 'none';
+    try {
+        await apiRequest('/profile/password', 'PUT', {
+            currentPassword: document.getElementById('currentPassword').value,
+            newPassword: document.getElementById('newPassword').value
+        });
+        document.getElementById('passwordForm').reset();
+        alert('Senha alterada com sucesso!');
+    } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.style.display = 'block';
+    }
+});
+
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    clearSession();
+    window.location.href = '../Auth/login.html';
+});
+
+loadProfile();
+loadAchievements();
+</script>
+</body>
+</html>
