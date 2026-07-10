@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Início — Aprenda e Ganhe</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+<div class="container">
+    <div class="top-bar">
+        <h2 id="greeting">Olá!</h2>
+        <a href="../Profile/index.html" style="font-size:24px; text-decoration:none;">👤</a>
+    </div>
+
+    <div class="card">
+        <div class="stat-grid">
+            <div class="stat-box"><div class="value" id="xpValue">0 XP</div><div class="label">Nível <span id="levelValue">1</span></div></div>
+            <div class="stat-box"><div class="value" id="streakValue">0 🔥</div><div class="label">Sequência de dias</div></div>
+        </div>
+        <div style="margin-top:12px;">
+            <div class="progress-bar"><div id="xpBar" style="width:0%"></div></div>
+            <p class="text-muted" id="xpToNext" style="margin-top:6px;"></p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="stat-grid">
+            <div class="stat-box"><div class="value" id="balanceValue">0,00</div><div class="label">Saldo disponível</div></div>
+            <div class="stat-box"><div class="value" id="totalEarnedValue">0,00</div><div class="label">Total já ganho</div></div>
+        </div>
+        <a href="../Wallet/index.html" class="btn" style="margin-top:14px;">Ver Carteira</a>
+    </div>
+
+    <div class="card">
+        <h3>🎯 Missões de hoje</h3>
+        <div id="missionsList"><p class="text-muted">Carregando missões...</p></div>
+    </div>
+
+    <a href="../Quiz/index.html" class="btn secondary" style="display:block; margin-bottom:16px;">▶️ Responder Quiz e Ganhar</a>
+
+    <div class="card">
+        <h3>Acesso rápido</h3>
+        <a href="../Referral/index.html" class="btn outline" style="margin-bottom:10px;">👥 Indicar Amigos</a>
+        <a href="../Premium/index.html" class="btn outline">⭐ Ser Premium</a>
+    </div>
+</div>
+
+<nav class="nav-bottom">
+    <a href="../Dashboard/index.html" class="active"><span class="icon">🏠</span>Início</a>
+    <a href="../Quiz/index.html"><span class="icon">🎯</span>Quiz</a>
+    <a href="../Wallet/index.html"><span class="icon">💰</span>Carteira</a>
+    <a href="../Referral/index.html"><span class="icon">👥</span>Indicar</a>
+    <a href="../Profile/index.html"><span class="icon">👤</span>Perfil</a>
+</nav>
+
+<script src="../../services/api.js"></script>
+<script>
+requireAuth();
+const user = getUser();
+document.getElementById('greeting').textContent = `Olá, ${user ? user.name.split(' ')[0] : ''}!`;
+
+async function loadDashboard() {
+    try {
+        const [progressData, walletData, missionsData] = await Promise.all([
+            apiRequest('/gamification/progress'),
+            apiRequest('/wallet/balance'),
+            apiRequest('/gamification/missions')
+        ]);
+
+        const p = progressData.progress;
+        document.getElementById('xpValue').textContent = `${p.xp_total} XP`;
+        document.getElementById('levelValue').textContent = p.level;
+        document.getElementById('streakValue').textContent = `${p.current_streak} 🔥`;
+
+        if (progressData.nextLevelXp) {
+            const prevThreshold = [0, 500, 1500, 3000, 5000, 8000, 12000][p.level - 1] || 0;
+            const range = progressData.nextLevelXp - prevThreshold;
+            const pct = Math.min(100, Math.round(((p.xp_total - prevThreshold) / range) * 100));
+            document.getElementById('xpBar').style.width = pct + '%';
+            document.getElementById('xpToNext').textContent = `Faltam ${progressData.nextLevelXp - p.xp_total} XP para o próximo nível`;
+        } else {
+            document.getElementById('xpBar').style.width = '100%';
+            document.getElementById('xpToNext').textContent = 'Nível máximo alcançado!';
+        }
+
+        const w = walletData.wallet;
+        const isMzOrOther = user && user.country === 'Moçambique';
+        document.getElementById('balanceValue').textContent = isMzOrOther
+            ? `${parseFloat(w.balance_available_mtn).toFixed(2)} MTN`
+            : `$${parseFloat(w.balance_available_usd).toFixed(2)}`;
+        document.getElementById('totalEarnedValue').textContent = isMzOrOther
+            ? `${parseFloat(w.total_earned_mtn).toFixed(2)} MTN`
+            : `$${parseFloat(w.total_earned_usd).toFixed(2)}`;
+
+        const missionsList = document.getElementById('missionsList');
+        missionsList.innerHTML = '';
+        missionsData.missions.forEach(m => {
+            const pct = Math.min(100, Math.round((m.progress_count / m.goal_count) * 100));
+            missionsList.innerHTML += `
+                <div style="margin-bottom:12px;">
+                    <div class="list-item" style="border:none; padding:4px 0;">
+                        <span>${m.is_completed ? '✅' : '⏳'} ${m.title}</span>
+                        <span class="text-muted">${m.progress_count}/${m.goal_count}</span>
+                    </div>
+                    <div class="progress-bar"><div style="width:${pct}%"></div></div>
+                </div>`;
+        });
+    } catch (err) {
+        console.error(err);
+    }
+}
+loadDashboard();
+</script>
+</body>
+</html>
