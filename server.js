@@ -34,7 +34,7 @@ app.use('/api/admin', adminRoutes);
 
 // Serve o frontend (HTML/CSS/JS estáticos) a partir do mesmo servidor,
 // para que backend e frontend fiquem hospedados juntos, num único serviço/domínio.
-const FRONTEND_DIR = path.join(__dirname, '../frontend/src');
+const FRONTEND_DIR = path.join(__dirname, 'frontend/src');
 app.use(express.static(FRONTEND_DIR));
 
 // Página inicial (pública) abre automaticamente ao acessar a raiz do domínio
