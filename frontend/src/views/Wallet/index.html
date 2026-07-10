@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carteira — Aprenda e Ganhe</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+<div class="container">
+    <div class="top-bar">
+        <h2>💰 Carteira</h2>
+        <a href="../Dashboard/index.html" style="text-decoration:none; font-size:22px;">🏠</a>
+    </div>
+
+    <div class="card">
+        <div class="stat-grid">
+            <div class="stat-box"><div class="value" id="availableValue">-</div><div class="label">Disponível</div></div>
+            <div class="stat-box"><div class="value" id="totalValue">-</div><div class="label">Total ganho</div></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Solicitar Saque</h3>
+        <div id="errorBox" class="error-box"></div>
+        <form id="withdrawForm">
+            <label>Valor</label>
+            <input type="number" id="amount" step="0.01" required>
+
+            <label>Moeda</label>
+            <select id="currency">
+                <option value="MTN">MTN (Metical)</option>
+                <option value="USD">USD (Dólar)</option>
+            </select>
+
+            <label>Método de pagamento</label>
+            <select id="paymentMethod">
+                <option value="M-Pesa">M-Pesa</option>
+                <option value="e-Mola">e-Mola</option>
+                <option value="PayPal">PayPal</option>
+                <option value="Banco">Transferência bancária</option>
+            </select>
+
+            <label>Detalhes (número de telefone / conta)</label>
+            <input type="text" id="paymentDetails" required>
+
+            <button type="submit" class="btn" id="submitBtn">Solicitar Saque</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Histórico de Saques</h3>
+        <div id="withdrawalsList"><p class="text-muted">Carregando...</p></div>
+    </div>
+
+    <div class="card">
+        <h3>Últimas Transações</h3>
+        <div id="transactionsList"><p class="text-muted">Carregando...</p></div>
+    </div>
+</div>
+
+<nav class="nav-bottom">
+    <a href="../Dashboard/index.html"><span class="icon">🏠</span>Início</a>
+    <a href="../Quiz/index.html"><span class="icon">🎯</span>Quiz</a>
+    <a href="../Wallet/index.html" class="active"><span class="icon">💰</span>Carteira</a>
+    <a href="../Referral/index.html"><span class="icon">👥</span>Indicar</a>
+    <a href="../Profile/index.html"><span class="icon">👤</span>Perfil</a>
+</nav>
+
+<script src="../../services/api.js"></script>
+<script>
+requireAuth();
+const user = getUser();
+
+async function loadWallet() {
+    try {
+        const data = await apiRequest('/wallet/balance');
+        const w = data.wallet;
+        const isMzOrOther = user && user.country === 'Moçambique';
+        const currency = isMzOrOther ? 'MTN' : 'USD';
+        const available = isMzOrOther ? w.balance_available_mtn : w.balance_available_usd;
+        const total = isMzOrOther ? w.total_earned_mtn : w.total_earned_usd;
+
+        document.getElementById('availableValue').textContent = `${parseFloat(available).toFixed(2)} ${currency}`;
+        document.getElementById('totalValue').textContent = `${parseFloat(total).toFixed(2)} ${currency}`;
+
+        // Pré-seleciona a moeda correta no formulário de saque
+        document.getElementById('currency').value = currency;
+    } catch (err) { console.error(err); }
+}
+
+async function loadWithdrawals() {
+    try {
+        const data = await apiRequest('/wallet/withdrawals');
+        const container = document.getElementById('withdrawalsList');
+        if (data.withdrawals.length === 0) {
+            container.innerHTML = '<p class="text-muted">Nenhum saque solicitado ainda.</p>';
+            return;
+        }
+        container.innerHTML = data.withdrawals.map(w => `
+            <div class="list-item">
+                <span>${w.amount} ${w.currency} • ${w.payment_method}</span>
+                <span class="badge">${w.status}</span>
+            </div>
+        `).join('');
+    } catch (err) { console.error(err); }
+}
+
+async function loadTransactions() {
+    try {
+        const data = await apiRequest('/wallet/history');
+        const container = document.getElementById('transactionsList');
+        if (data.transactions.length === 0) {
+            container.innerHTML = '<p class="text-muted">Nenhuma transação ainda.</p>';
+            return;
+        }
+        container.innerHTML = data.transactions.slice(0, 15).map(t => `
+            <div class="list-item">
+                <span>${t.type}</span>
+                <span>${t.amount} ${t.currency}</span>
+            </div>
+        `).join('');
+    } catch (err) { console.error(err); }
+}
+
+document.getElementById('withdrawForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('errorBox');
+    const submitBtn = document.getElementById('submitBtn');
+    errorBox.style.display = 'none';
+    submitBtn.disabled = true;
+
+    try {
+        await apiRequest('/wallet/withdraw', 'POST', {
+            amount: document.getElementById('amount').value,
+            currency: document.getElementById('currency').value,
+            paymentMethod: document.getElementById('paymentMethod').value,
+            paymentDetails: document.getElementById('paymentDetails').value
+        });
+        document.getElementById('withdrawForm').reset();
+        await Promise.all([loadWallet(), loadWithdrawals()]);
+    } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.style.display = 'block';
+    } finally {
+        submitBtn.disabled = false;
+    }
+});
+
+loadWallet();
+loadWithdrawals();
+loadTransactions();
+</script>
+</body>
+</html>
