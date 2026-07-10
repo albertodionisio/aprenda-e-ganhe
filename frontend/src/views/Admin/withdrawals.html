@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saques — Admin</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+<div class="container">
+    <div class="top-bar">
+        <h2>💸 Gerir Saques</h2>
+        <a href="dashboard.html" style="text-decoration:none; font-size:22px;">🏠</a>
+    </div>
+
+    <div class="card">
+        <select id="statusFilter" onchange="loadWithdrawals()">
+            <option value="pending">Pendentes</option>
+            <option value="completed">Concluídos</option>
+            <option value="rejected">Rejeitados</option>
+            <option value="">Todos</option>
+        </select>
+    </div>
+
+    <div id="withdrawalsList"><p class="text-muted">Carregando...</p></div>
+</div>
+
+<script src="../../services/api.js"></script>
+<script>
+requireAuth();
+
+async function loadWithdrawals() {
+    const status = document.getElementById('statusFilter').value;
+    const endpoint = status ? `/admin/withdrawals?status=${status}` : '/admin/withdrawals';
+    try {
+        const data = await apiRequest(endpoint);
+        const container = document.getElementById('withdrawalsList');
+        if (data.withdrawals.length === 0) {
+            container.innerHTML = '<p class="text-muted">Nenhum pedido encontrado.</p>';
+            return;
+        }
+        container.innerHTML = data.withdrawals.map(w => `
+            <div class="card">
+                <p><b>${w.name}</b> — ${w.email}</p>
+                <p>${w.amount} ${w.currency} via ${w.payment_method}</p>
+                <p class="text-muted">Detalhes: ${w.payment_details || '-'}</p>
+                <span class="badge">${w.status}</span>
+                ${w.status === 'pending' ? `
+                    <div style="margin-top:10px; display:flex; gap:10px;">
+                        <button class="btn" style="width:auto; flex:1;" onclick="resolve(${w.id}, 'approve')">Aprovar</button>
+                        <button class="btn danger" style="width:auto; flex:1;" onclick="resolve(${w.id}, 'reject')">Rejeitar</button>
+                    </div>` : ''}
+            </div>
+        `).join('');
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+async function resolve(id, action) {
+    try {
+        await apiRequest(`/admin/withdrawals/${id}`, 'PUT', { action });
+        loadWithdrawals();
+    } catch (err) {
+        alert('Erro: ' + err.message);
+    }
+}
+
+loadWithdrawals();
+</script>
+</body>
+</html>

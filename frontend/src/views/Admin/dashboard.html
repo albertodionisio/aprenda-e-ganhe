@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Aprenda e Ganhe</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+<div class="container">
+    <div class="top-bar">
+        <h2>🛠️ Painel Admin</h2>
+        <a href="../Dashboard/index.html" style="text-decoration:none; font-size:22px;">🏠</a>
+    </div>
+
+    <div id="deniedBox" class="card" style="display:none;">
+        <p class="text-danger">Acesso restrito à administração.</p>
+    </div>
+
+    <div id="adminContent" style="display:none;">
+        <div class="card">
+            <div class="stat-grid">
+                <div class="stat-box"><div class="value" id="totalUsers">-</div><div class="label">Usuários totais</div></div>
+                <div class="stat-box"><div class="value" id="newToday">-</div><div class="label">Novos hoje</div></div>
+                <div class="stat-box"><div class="value" id="quizzesAnswered">-</div><div class="label">Quizzes respondidos</div></div>
+                <div class="stat-box"><div class="value" id="avgAccuracy">-</div><div class="label">Precisão média</div></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Financeiro</h3>
+            <div class="stat-grid">
+                <div class="stat-box"><div class="value" id="withdrawalsPending">-</div><div class="label">Saques pendentes</div></div>
+                <div class="stat-box"><div class="value" id="premiumActive">-</div><div class="label">Premium ativos</div></div>
+            </div>
+        </div>
+
+        <a href="add-quiz.html" class="btn" style="margin-bottom:12px;">➕ Cadastrar Nova Pergunta</a>
+        <a href="withdrawals.html" class="btn outline" style="margin-bottom:12px;">💸 Gerir Saques</a>
+        <a href="users.html" class="btn outline">👥 Gerir Usuários</a>
+    </div>
+</div>
+
+<script src="../../services/api.js"></script>
+<script>
+requireAuth();
+
+async function loadDashboard() {
+    try {
+        const data = await apiRequest('/admin/dashboard');
+        document.getElementById('adminContent').style.display = 'block';
+        document.getElementById('totalUsers').textContent = data.users.total;
+        document.getElementById('newToday').textContent = data.users.new_today;
+        document.getElementById('quizzesAnswered').textContent = data.activity.quizzes_answered;
+        document.getElementById('avgAccuracy').textContent = (data.activity.average_accuracy_pct || 0) + '%';
+        document.getElementById('withdrawalsPending').textContent = data.financial.withdrawals_pending;
+        document.getElementById('premiumActive').textContent = data.premium.active_subscriptions;
+    } catch (err) {
+        document.getElementById('deniedBox').style.display = 'block';
+    }
+}
+loadDashboard();
+</script>
+</body>
+</html>

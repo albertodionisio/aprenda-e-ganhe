@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cadastrar Quiz — Admin</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+<div class="container">
+    <div class="top-bar">
+        <h2>➕ Nova Pergunta</h2>
+        <a href="dashboard.html" style="text-decoration:none; font-size:22px;">🏠</a>
+    </div>
+
+    <div class="card">
+        <div id="errorBox" class="error-box"></div>
+        <div id="successBox" class="error-box" style="background:#dcfce7; color:#166534;"></div>
+
+        <form id="quizForm">
+            <label>Categoria (slug)</label>
+            <input type="text" id="categorySlug" placeholder="ex: financas" required>
+
+            <label>Título do quiz</label>
+            <input type="text" id="quizTitle" placeholder="ex: Quiz introdutório">
+
+            <label>Tipo de pergunta</label>
+            <select id="questionType">
+                <option value="multiple_choice">Múltipla escolha</option>
+                <option value="true_false">Verdadeiro/Falso</option>
+            </select>
+
+            <label>URL de vídeo (opcional)</label>
+            <input type="url" id="videoUrl">
+
+            <label>Pergunta</label>
+            <textarea id="questionText" rows="3" required></textarea>
+
+            <label>Opção A</label>
+            <input type="text" id="optionA">
+            <label>Opção B</label>
+            <input type="text" id="optionB">
+            <label>Opção C (opcional)</label>
+            <input type="text" id="optionC">
+            <label>Opção D (opcional)</label>
+            <input type="text" id="optionD">
+
+            <label>Opção correta</label>
+            <select id="correctOption">
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+                <option value="D">D</option>
+            </select>
+
+            <label>Explicação (mostrada após responder)</label>
+            <textarea id="explanation" rows="2"></textarea>
+
+            <label>Recompensa (valor monetário)</label>
+            <input type="number" id="rewardAmount" step="0.01" value="0.05">
+
+            <label>XP concedido</label>
+            <input type="number" id="xpAmount" value="10">
+
+            <label>Nível de dificuldade (1-4)</label>
+            <input type="number" id="difficultyLevel" min="1" max="4" value="1">
+
+            <button type="submit" class="btn">Cadastrar Pergunta</button>
+        </form>
+    </div>
+</div>
+
+<script src="../../services/api.js"></script>
+<script>
+requireAuth();
+
+document.getElementById('quizForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById('errorBox');
+    const successBox = document.getElementById('successBox');
+    errorBox.style.display = 'none';
+    successBox.style.display = 'none';
+
+    try {
+        await apiRequest('/quiz/add', 'POST', {
+            categorySlug: document.getElementById('categorySlug').value,
+            quizTitle: document.getElementById('quizTitle').value,
+            questionType: document.getElementById('questionType').value,
+            videoUrl: document.getElementById('videoUrl').value,
+            questionText: document.getElementById('questionText').value,
+            optionA: document.getElementById('optionA').value,
+            optionB: document.getElementById('optionB').value,
+            optionC: document.getElementById('optionC').value,
+            optionD: document.getElementById('optionD').value,
+            correctOption: document.getElementById('correctOption').value,
+            explanation: document.getElementById('explanation').value,
+            rewardAmount: parseFloat(document.getElementById('rewardAmount').value),
+            xpAmount: parseInt(document.getElementById('xpAmount').value),
+            difficultyLevel: parseInt(document.getElementById('difficultyLevel').value)
+        });
+        successBox.textContent = 'Pergunta cadastrada com sucesso!';
+        successBox.style.display = 'block';
+        document.getElementById('quizForm').reset();
+    } catch (err) {
+        errorBox.textContent = err.message;
+        errorBox.style.display = 'block';
+    }
+});
+</script>
+</body>
+</html>
