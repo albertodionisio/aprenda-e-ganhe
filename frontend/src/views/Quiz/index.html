@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quiz — Aprenda e Ganhe</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+<div class="container">
+    <div class="top-bar">
+        <h2>🎯 Quiz</h2>
+        <a href="../Dashboard/index.html" style="text-decoration:none; font-size:22px;">✖️</a>
+    </div>
+
+    <div style="margin-bottom:14px;">
+        <select id="categorySelect" onchange="loadNextQuestion()">
+            <option value="">Todas as categorias</option>
+        </select>
+    </div>
+
+    <div id="loadingBox" class="card text-center"><p class="text-muted">Carregando pergunta...</p></div>
+
+    <div id="quizCard" class="card" style="display:none;">
+        <span class="badge" id="categoryBadge"></span>
+        <h3 id="questionText" style="margin-top:10px;"></h3>
+        <div id="optionsContainer"></div>
+        <p class="text-muted" id="rewardInfo" style="margin-top:8px;"></p>
+    </div>
+
+    <div id="resultCard" class="card" style="display:none;">
+        <h3 id="resultTitle"></h3>
+        <p id="resultExplanation" class="text-muted"></p>
+        <div id="resultRewards" style="margin: 12px 0;"></div>
+        <button class="btn" onclick="loadNextQuestion()">Próxima Pergunta ▶️</button>
+    </div>
+
+    <div id="emptyCard" class="card text-center" style="display:none;">
+        <p>🎉 Sem novas perguntas por agora nesta categoria.</p>
+        <a href="../Dashboard/index.html" class="btn outline">Voltar ao Início</a>
+    </div>
+</div>
+
+<script src="../../services/api.js"></script>
+<script>
+requireAuth();
+
+let currentQuestion = null;
+let answered = false;
+
+async function loadCategories() {
+    try {
+        const data = await apiRequest('/quiz/categories');
+        const select = document.getElementById('categorySelect');
+        data.categories.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.slug;
+            opt.textContent = c.name;
+            select.appendChild(opt);
+        });
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+function show(id) {
+    ['loadingBox', 'quizCard', 'resultCard', 'emptyCard'].forEach(cid => {
+        document.getElementById(cid).style.display = (cid === id) ? 'block' : 'none';
+    });
+}
+
+async function loadNextQuestion() {
+    answered = false;
+    show('loadingBox');
+    const categorySlug = document.getElementById('categorySelect').value;
+    const endpoint = categorySlug ? `/quiz/next?categorySlug=${categorySlug}` : '/quiz/next';
+
+    try {
+        const data = await apiRequest(endpoint);
+        currentQuestion = data.quiz;
+
+        document.getElementById('categoryBadge').textContent = currentQuestion.category_name;
+        document.getElementById('questionText').textContent = currentQuestion.question_text;
+        document.getElementById('rewardInfo').textContent =
+            `Recompensa: +${currentQuestion.xp_amount} XP se acertar, +${currentQuestion.reward_amount} na moeda local`;
+
+        const container = document.getElementById('optionsContainer');
+        container.innerHTML = '';
+
+        const options = [
+            ['A', currentQuestion.option_a],
+            ['B', currentQuestion.option_b],
+            ['C', currentQuestion.option_c],
+            ['D', currentQuestion.option_d],
+        ].filter(([key, text]) => text);
+
+        options.forEach(([key, text]) => {
+            const btn = document.createElement('button');
+            btn.className = 'option-btn';
+            btn.id = `option-${key}`;
+            btn.textContent = `${key}) ${text}`;
+            btn.onclick = () => submitAnswer(key);
+            container.appendChild(btn);
+        });
+
+        show('quizCard');
+    } catch (err) {
+        if (err.message && err.message.toLowerCase().includes('sem novas')) {
+            show('emptyCard');
+        } else {
+            show('emptyCard');
+            document.querySelector('#emptyCard p').textContent = 'Erro ao carregar pergunta: ' + err.message;
+        }
+    }
+}
+
+async function submitAnswer(selectedOption) {
+    if (answered) return;
+    answered = true;
+
+    document.querySelectorAll('.option-btn').forEach(b => b.disabled = true);
+
+    try {
+        const data = await apiRequest('/quiz/submit', 'POST', {
+            questionId: currentQuestion.id,
+            selectedOption
+        });
+
+        document.getElementById(`option-${selectedOption}`).classList.add(data.correct ? 'correct' : 'wrong');
+        if (!data.correct) {
+            document.getElementById(`option-${data.correctOption}`).classList.add('correct');
+        }
+
+        document.getElementById('resultTitle').textContent = data.correct
+            ? '✅ Resposta correta!'
+            : '❌ Resposta incorreta';
+        document.getElementById('resultExplanation').textContent = data.explanation || '';
+
+        let rewardsHtml = `<p>+${data.xpEarned} XP`;
+        if (data.rewardPaid > 0) rewardsHtml += ` &nbsp;•&nbsp; +${data.rewardPaid} ${data.currency}`;
+        rewardsHtml += '</p>';
+        if (data.progress.leveledUp) rewardsHtml += `<p class="text-success">🎉 Subiu para o nível ${data.progress.level}!</p>`;
+        (data.unlockedAchievements || []).forEach(a => {
+            rewardsHtml += `<p>${a.icon} Conquista desbloqueada: <b>${a.title}</b></p>`;
+        });
+        (data.completedMissions || []).forEach(m => {
+            rewardsHtml += `<p>🎯 Missão concluída: <b>${m.title}</b> (+${m.xp_reward} XP)</p>`;
+        });
+        document.getElementById('resultRewards').innerHTML = rewardsHtml;
+
+        setTimeout(() => show('resultCard'), 600);
+    } catch (err) {
+        alert('Erro ao enviar resposta: ' + err.message);
+        answered = false;
+        document.querySelectorAll('.option-btn').forEach(b => b.disabled = false);
+    }
+}
+
+loadCategories();
+loadNextQuestion();
+</script>
+</body>
+</html>
