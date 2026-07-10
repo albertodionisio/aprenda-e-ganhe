@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Premium — Aprenda e Ganhe</title>
+<link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+<div class="container">
+    <div class="top-bar">
+        <h2>⭐ Premium</h2>
+        <a href="../Dashboard/index.html" style="text-decoration:none; font-size:22px;">🏠</a>
+    </div>
+
+    <div class="card">
+        <p class="text-muted">
+            Assine um plano Premium para desbloquear benefícios extra. A confirmação do
+            pagamento neste protótipo é feita manualmente pela administração — a
+            integração real com M-Pesa, PayPal ou Stripe precisa de credenciais próprias.
+        </p>
+    </div>
+
+    <div id="statusCard" class="card" style="display:none;">
+        <h3>A sua assinatura</h3>
+        <p id="statusText"></p>
+    </div>
+
+    <div id="plansList"><p class="text-muted">Carregando planos...</p></div>
+</div>
+
+<nav class="nav-bottom">
+    <a href="../Dashboard/index.html"><span class="icon">🏠</span>Início</a>
+    <a href="../Quiz/index.html"><span class="icon">🎯</span>Quiz</a>
+    <a href="../Wallet/index.html"><span class="icon">💰</span>Carteira</a>
+    <a href="../Referral/index.html"><span class="icon">👥</span>Indicar</a>
+    <a href="../Profile/index.html"><span class="icon">👤</span>Perfil</a>
+</nav>
+
+<script src="../../services/api.js"></script>
+<script>
+requireAuth();
+
+async function loadStatus() {
+    try {
+        const data = await apiRequest('/premium/status');
+        if (data.subscription) {
+            document.getElementById('statusCard').style.display = 'block';
+            document.getElementById('statusText').textContent =
+                `Plano: ${data.subscription.plan_name} — Estado: ${data.subscription.status}`;
+        }
+    } catch (err) { console.error(err); }
+}
+
+async function loadPlans() {
+    try {
+        const data = await apiRequest('/premium/plans');
+        const container = document.getElementById('plansList');
+        container.innerHTML = data.plans.map(p => `
+            <div class="card">
+                <h3>${p.name}</h3>
+                <p class="text-muted">${p.benefits}</p>
+                <h2>$${parseFloat(p.price_usd).toFixed(2)}</h2>
+                <button class="btn secondary" onclick="subscribe(${p.id})">Assinar</button>
+            </div>
+        `).join('');
+    } catch (err) { console.error(err); }
+}
+
+async function subscribe(planId) {
+    const paymentMethod = prompt('Método de pagamento (M-Pesa, e-Mola, PayPal, Banco):', 'M-Pesa');
+    if (!paymentMethod) return;
+    try {
+        await apiRequest('/premium/subscribe', 'POST', { planId, paymentMethod });
+        alert('Assinatura criada! Aguarde a confirmação do pagamento pela administração.');
+        loadStatus();
+    } catch (err) {
+        alert('Erro: ' + err.message);
+    }
+}
+
+loadStatus();
+loadPlans();
+</script>
+</body>
+</html>
