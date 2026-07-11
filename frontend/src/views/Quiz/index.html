@@ -14,9 +14,17 @@
     </div>
 
     <div style="margin-bottom:14px;">
-        <select id="categorySelect" onchange="loadNextQuestion()">
+        <select id="categorySelect" onchange="onCategoryChange()">
             <option value="">Todas as categorias</option>
         </select>
+    </div>
+
+    <div id="potentialCard" class="card" style="display:none; margin-bottom:14px;">
+        <p class="text-muted" style="margin:0;">Nesta categoria podes ganhar até:</p>
+        <p style="font-size:20px; font-weight:bold; margin:4px 0;">
+            <span id="potentialReward"></span> &nbsp;•&nbsp; <span id="potentialXp"></span> XP
+        </p>
+        <p class="text-muted" id="potentialCount" style="margin:0;"></p>
     </div>
 
     <div id="loadingBox" class="card text-center"><p class="text-muted">Carregando pergunta...</p></div>
@@ -32,6 +40,10 @@
         <h3 id="resultTitle"></h3>
         <p id="resultExplanation" class="text-muted"></p>
         <div id="resultRewards" style="margin: 12px 0;"></div>
+        <div id="quizCompleteBanner" style="display:none; margin: 12px 0; padding:12px; background:#e8f9ee; border-radius:8px;">
+            <p style="margin:0; font-weight:bold;">🏁 Categoria concluída!</p>
+            <p style="margin:0;" id="quizCompleteText"></p>
+        </div>
         <button class="btn" onclick="loadNextQuestion()">Próxima Pergunta ▶️</button>
     </div>
 
@@ -47,20 +59,46 @@ requireAuth();
 
 let currentQuestion = null;
 let answered = false;
+let categoriesData = [];
 
 async function loadCategories() {
     try {
         const data = await apiRequest('/quiz/categories');
+        categoriesData = data.categories;
         const select = document.getElementById('categorySelect');
-        data.categories.forEach(c => {
+        categoriesData.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c.slug;
-            opt.textContent = c.name;
+            opt.textContent = `${c.name} (${c.remaining_questions} disponíveis)`;
             select.appendChild(opt);
         });
     } catch (err) {
         console.error(err);
     }
+}
+
+function updatePotentialCard() {
+    const slug = document.getElementById('categorySelect').value;
+    const potentialCard = document.getElementById('potentialCard');
+
+    if (!slug) {
+        potentialCard.style.display = 'none';
+        return;
+    }
+    const cat = categoriesData.find(c => c.slug === slug);
+    if (!cat || cat.remaining_questions === 0) {
+        potentialCard.style.display = 'none';
+        return;
+    }
+    document.getElementById('potentialReward').textContent = `+${parseFloat(cat.potential_reward).toFixed(2)}`;
+    document.getElementById('potentialXp').textContent = `+${cat.potential_xp}`;
+    document.getElementById('potentialCount').textContent = `${cat.remaining_questions} pergunta(s) por responder`;
+    potentialCard.style.display = 'block';
+}
+
+function onCategoryChange() {
+    updatePotentialCard();
+    loadNextQuestion();
 }
 
 function show(id) {
@@ -148,6 +186,15 @@ async function submitAnswer(selectedOption) {
         });
         document.getElementById('resultRewards').innerHTML = rewardsHtml;
 
+        const banner = document.getElementById('quizCompleteBanner');
+        if (data.quizFullyCompleted) {
+            document.getElementById('quizCompleteText').textContent =
+                `Ganhaste um bónus extra de +${parseFloat(data.quizCompletedBonus).toFixed(2)} ${data.currency} por completares todas as perguntas desta categoria.`;
+            banner.style.display = 'block';
+        } else {
+            banner.style.display = 'none';
+        }
+
         setTimeout(() => show('resultCard'), 600);
     } catch (err) {
         alert('Erro ao enviar resposta: ' + err.message);
@@ -156,8 +203,13 @@ async function submitAnswer(selectedOption) {
     }
 }
 
-loadCategories();
-loadNextQuestion();
+async function init() {
+    await loadCategories();
+    updatePotentialCard();
+    loadNextQuestion();
+}
+
+init();
 </script>
 </body>
-</html>
+    </html>
