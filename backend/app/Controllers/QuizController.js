@@ -37,7 +37,7 @@ const QuizController = {
 
             const { rows } = await pool.query(query, params);
             if (rows.length === 0) {
-                return res.status(404).json({ message: "Sem novas perguntas disponíveis nesta categoria por agora." });
+                return res.status(404).json({ error: "Sem novas perguntas disponíveis nesta categoria por agora." });
             }
 
             await pool.query(
