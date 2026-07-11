@@ -39,7 +39,7 @@ app.use(express.static(FRONTEND_DIR));
 
 // Página inicial (pública) abre automaticamente ao acessar a raiz do domínio
 app.get('/', (req, res) => {
-    res.sendFile(path.join(FRONTEND_DIR, 'views/Public/index.html'));
+    res.redirect('/views/Public/index.html');
 });
 
 // Tratamento de rota inexistente (só se aplica a chamadas de API não encontradas;
