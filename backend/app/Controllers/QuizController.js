@@ -6,7 +6,26 @@ const Notification = require('../Models/Notification');
 const QuizController = {
     async listCategories(req, res) {
         try {
-            const { rows } = await pool.query("SELECT * FROM categories WHERE status = 'active' ORDER BY name;");
+            const userId = req.user.id;
+            const { rows } = await pool.query(`
+                SELECT c.*,
+                    (SELECT COUNT(*)::int FROM questions q WHERE q.category_id = c.id AND q.status = 'active') AS total_questions,
+                    (SELECT COUNT(*)::int FROM questions q
+                        WHERE q.category_id = c.id AND q.status = 'active'
+                        AND q.id NOT IN (SELECT question_id FROM quiz_progress WHERE user_id = $1)
+                    ) AS remaining_questions,
+                    (SELECT COALESCE(SUM(q.reward_amount), 0) FROM questions q
+                        WHERE q.category_id = c.id AND q.status = 'active'
+                        AND q.id NOT IN (SELECT question_id FROM quiz_progress WHERE user_id = $1)
+                    ) AS potential_reward,
+                    (SELECT COALESCE(SUM(q.xp_amount), 0) FROM questions q
+                        WHERE q.category_id = c.id AND q.status = 'active'
+                        AND q.id NOT IN (SELECT question_id FROM quiz_progress WHERE user_id = $1)
+                    ) AS potential_xp
+                FROM categories c
+                WHERE c.status = 'active'
+                ORDER BY c.name;
+            `, [userId]);
             return res.json({ categories: rows });
         } catch (error) {
             console.error(error);
@@ -45,9 +64,6 @@ const QuizController = {
                 [userId]
             );
 
-            // Regista no servidor o instante em que a pergunta foi entregue.
-            // O anti-fraude usa este valor (e não o "startTime" enviado pelo cliente)
-            // para calcular o tempo de resposta.
             await pool.query(
                 `INSERT INTO quiz_issued (user_id, question_id, issued_at)
                  VALUES ($1, $2, CURRENT_TIMESTAMP)
@@ -85,16 +101,17 @@ const QuizController = {
             }
 
             const questionRes = await client.query(
-                'SELECT correct_option, reward_amount, xp_amount, explanation FROM questions WHERE id = $1;',
+                'SELECT category_id, correct_option, reward_amount, xp_amount, explanation FROM questions WHERE id = $1;',
                 [questionId]
             );
             if (questionRes.rows.length === 0) {
                 await client.query('ROLLBACK');
                 return res.status(404).json({ error: "Pergunta não encontrada." });
             }
-            const { correct_option, reward_amount, xp_amount, explanation } = questionRes.rows[0];
+            const { category_id, correct_option, reward_amount, xp_amount, explanation } = questionRes.rows[0];
             const isCorrect = selectedOption.toUpperCase() === correct_option.toUpperCase();
             const xpEarned = isCorrect ? xp_amount : Math.ceil(xp_amount / 5);
+            const currency = userCountry === 'Moçambique' ? 'MTN' : 'USD';
 
             await client.query(
                 `INSERT INTO quiz_progress (user_id, question_id, selected_option, is_correct, xp_received)
@@ -107,11 +124,9 @@ const QuizController = {
             const missionResult = await Gamification.updateMissionProgress(userId, 'answer_5_quizzes', 1, client);
             const weeklyMissionResult = await Gamification.updateMissionProgress(userId, 'weekly_50', 1, client);
 
-            let currency = null;
             let rewardPaid = 0;
 
             if (isCorrect) {
-                currency = userCountry === 'Moçambique' ? 'MTN' : 'USD';
                 await Wallet.addAvailable(userId, reward_amount, currency, client);
                 rewardPaid = reward_amount;
 
@@ -139,6 +154,32 @@ const QuizController = {
                         message: `Recebeste ${referralBonus.toFixed(2)} ${currency} de bónus de indicação.`
                     }, client);
                 }
+            }
+
+            const totalRes = await client.query(
+                `SELECT COUNT(*)::int AS total FROM questions WHERE category_id = $1 AND status = 'active';`,
+                [category_id]
+            );
+            const answeredRes = await client.query(
+                `SELECT COUNT(*)::int AS total FROM quiz_progress qp
+                 JOIN questions q ON q.id = qp.question_id
+                 WHERE qp.user_id = $1 AND q.category_id = $2;`,
+                [userId, category_id]
+            );
+            let quizCompletedBonus = 0;
+            const quizFullyCompleted = totalRes.rows[0].total > 0 && answeredRes.rows[0].total === totalRes.rows[0].total;
+            if (quizFullyCompleted) {
+                quizCompletedBonus = 0.20;
+                await Wallet.addAvailable(userId, quizCompletedBonus, currency, client);
+                await client.query(
+                    `INSERT INTO transactions (user_id, type, amount, currency, status) VALUES ($1, 'QUIZ_COMPLETE_BONUS', $2, $3, 'COMPLETED');`,
+                    [userId, quizCompletedBonus, currency]
+                );
+                await Notification.create(userId, {
+                    category: 'reward',
+                    title: 'Quiz completo!',
+                    message: `Completaste todas as perguntas desta categoria e ganhaste um bónus de ${quizCompletedBonus.toFixed(2)} ${currency}.`
+                }, client);
             }
 
             const firstQuiz = progress.questions_answered === 1;
@@ -183,6 +224,8 @@ const QuizController = {
                 xpEarned,
                 rewardPaid,
                 currency,
+                quizFullyCompleted,
+                quizCompletedBonus,
                 progress: {
                     xp_total: progress.xp_total,
                     level: progress.level,
