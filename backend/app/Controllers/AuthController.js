@@ -21,10 +21,17 @@ const AuthController = {
             const { name, username, email, password, phone, country, language, referralCode } = req.body;
 
             if (!name || !username || !email || !password) {
-                return res.status(400).json({ error: "Preencha todos os campos obrigatórios." });
-            }
-            if (password.length < 6) {
-                return res.status(400).json({ error: "Senha muito fraca. Use pelo menos 6 caracteres." });
+    return res.status(400).json({ error: "Preencha todos os campos obrigatórios." });
+}
+if (password.length < 6) {
+    return res.status(400).json({ error: "Senha muito fraca. Use pelo menos 6 caracteres." });
+}
+if (username.length < 4 || !/^[a-zA-Z0-9_]+$/.test(username)) {
+    return res.status(400).json({ error: "Nome de usuário deve ter pelo menos 4 caracteres e conter apenas letras, números ou underscore." });
+}
+if (phone && !/^\+?[0-9]{8,15}$/.test(phone.replace(/\s/g, ''))) {
+    return res.status(400).json({ error: "Número de telefone inválido. Use só dígitos (mínimo 8, ex: +258841234567)." });
+}
             }
 
             const emailExists = await User.findByEmail(email);
