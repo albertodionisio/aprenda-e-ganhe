@@ -1,7 +1,9 @@
 require('dotenv').config();
+const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
+const pool = require('./database/db');
 
 const authRoutes = require('./routes/authRoutes');
 const walletRoutes = require('./routes/walletRoutes');
@@ -57,7 +59,25 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: "Erro interno inesperado no servidor." });
 });
 
+async function ensureSchema() {
+    try {
+        const { rows } = await pool.query(`SELECT to_regclass('public.users') AS exists;`);
+        if (!rows[0].exists) {
+            console.log('A criar as tabelas do banco de dados...');
+            const schema = fs.readFileSync(path.join(__dirname, 'database/schema.sql')).toString();
+            await pool.query(schema);
+            console.log('Tabelas criadas com sucesso!');
+        } else {
+            console.log('Tabelas já existem, nada a fazer.');
+        }
+    } catch (err) {
+        console.error('Erro ao criar tabelas:', err);
+    }
+}
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+ensureSchema().then(() => {
+    app.listen(PORT, () => {
+        console.log(`Servidor rodando na porta ${PORT}`);
+    });
 });
