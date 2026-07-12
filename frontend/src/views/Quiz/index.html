@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Quiz — Aprenda e Ganhe</title>
-    <link rel="stylesheet" href="../../assets/style.css">
+<link rel="stylesheet" href="../../assets/style.css">
 <script id="aclib" type="text/javascript" src="//acscdn.com/script/aclib.js"></script>
 <script type="text/javascript">
     aclib.runAutoTag({
@@ -46,11 +46,21 @@
         <h3 id="resultTitle"></h3>
         <p id="resultExplanation" class="text-muted"></p>
         <div id="resultRewards" style="margin: 12px 0;"></div>
-        <div id="quizCompleteBanner" style="display:none; margin: 12px 0; padding:12px; background:#e8f9ee; border-radius:8px;">
-            <p style="margin:0; font-weight:bold;">🏁 Categoria concluída!</p>
-            <p style="margin:0;" id="quizCompleteText"></p>
-        </div>
-        <button class="btn" onclick="loadNextQuestion()">Próxima Pergunta ▶️</button>
+        <button class="btn" id="nextBtn" onclick="loadNextQuestion()">Próxima Pergunta ▶️</button>
+    </div>
+
+    <div id="sessionCard" class="card" style="display:none;">
+        <h3>🏁 Série de 10 perguntas concluída!</h3>
+        <p style="font-size:22px; font-weight:bold; margin:8px 0;" id="sessionEarned"></p>
+        <p class="text-muted" id="sessionScore"></p>
+
+        <button class="btn" id="adBoostBtn" onclick="requestAdBoost()" style="margin-top:12px;">📺 Ver anúncio e ganhar +3</button>
+        <p class="text-muted" id="adBoostResult" style="margin-top:8px;"></p>
+
+        <h4 style="margin-top:20px;">Revisão das respostas</h4>
+        <div id="sessionReview"></div>
+
+        <button class="btn outline" style="margin-top:14px;" onclick="loadNextQuestion()">Continuar respondendo ▶️</button>
     </div>
 
     <div id="emptyCard" class="card text-center" style="display:none;">
@@ -66,6 +76,7 @@ requireAuth();
 let currentQuestion = null;
 let answered = false;
 let categoriesData = [];
+let pendingSession = null;
 
 async function loadCategories() {
     try {
@@ -108,13 +119,14 @@ function onCategoryChange() {
 }
 
 function show(id) {
-    ['loadingBox', 'quizCard', 'resultCard', 'emptyCard'].forEach(cid => {
+    ['loadingBox', 'quizCard', 'resultCard', 'sessionCard', 'emptyCard'].forEach(cid => {
         document.getElementById(cid).style.display = (cid === id) ? 'block' : 'none';
     });
 }
 
 async function loadNextQuestion() {
     answered = false;
+    pendingSession = null;
     show('loadingBox');
     const categorySlug = document.getElementById('categorySelect').value;
     const endpoint = categorySlug ? `/quiz/next?categorySlug=${categorySlug}` : '/quiz/next';
@@ -192,20 +204,61 @@ async function submitAnswer(selectedOption) {
         });
         document.getElementById('resultRewards').innerHTML = rewardsHtml;
 
-        const banner = document.getElementById('quizCompleteBanner');
-        if (data.quizFullyCompleted) {
-            document.getElementById('quizCompleteText').textContent =
-                `Ganhaste um bónus extra de +${parseFloat(data.quizCompletedBonus).toFixed(2)} ${data.currency} por completares todas as perguntas desta categoria.`;
-            banner.style.display = 'block';
-        } else {
-            banner.style.display = 'none';
+        if (data.sessionComplete && data.session) {
+            pendingSession = data.session;
         }
 
-        setTimeout(() => show('resultCard'), 600);
+        setTimeout(() => {
+            if (pendingSession) {
+                showSessionSummary(pendingSession);
+            } else {
+                show('resultCard');
+            }
+        }, 600);
     } catch (err) {
         alert('Erro ao enviar resposta: ' + err.message);
         answered = false;
         document.querySelectorAll('.option-btn').forEach(b => b.disabled = false);
+    }
+}
+
+function showSessionSummary(session) {
+    document.getElementById('sessionEarned').textContent =
+        `Ganhaste ${session.totalEarned.toFixed(2)} de ${session.maxPossible.toFixed(2)} ${session.currency}`;
+    document.getElementById('sessionScore').textContent =
+        `Acertaste ${session.correctCount} de ${session.totalQuestions} perguntas`;
+
+    document.getElementById('adBoostBtn').style.display = 'inline-block';
+    document.getElementById('adBoostResult').textContent = '';
+
+    const reviewContainer = document.getElementById('sessionReview');
+    reviewContainer.innerHTML = session.review.map((r, i) => `
+        <div class="card" style="margin-bottom:8px; ${r.isCorrect ? 'border-left:4px solid #2ecc71;' : 'border-left:4px solid #e74c3c;'}">
+            <p style="margin:0; font-weight:bold;">${i + 1}. ${r.questionText}</p>
+            <p style="margin:4px 0 0;" class="text-muted">
+                A tua resposta: ${r.selectedOption} ${r.isCorrect ? '✅' : `❌ (Correta: ${r.correctOption})`}
+            </p>
+            <p style="margin:4px 0 0;" class="text-muted">${r.explanation || ''}</p>
+        </div>
+    `).join('');
+
+    show('sessionCard');
+}
+
+async function requestAdBoost() {
+    const btn = document.getElementById('adBoostBtn');
+    const resultEl = document.getElementById('adBoostResult');
+    btn.disabled = true;
+    btn.textContent = 'A carregar anúncio...';
+
+    try {
+        const data = await apiRequest('/quiz/ad-boost', 'POST');
+        resultEl.textContent = `🎉 +${data.bonus} ${data.currency} adicionados à tua carteira!`;
+        btn.style.display = 'none';
+    } catch (err) {
+        resultEl.textContent = err.message;
+        btn.disabled = false;
+        btn.textContent = '📺 Ver anúncio e ganhar +3';
     }
 }
 
