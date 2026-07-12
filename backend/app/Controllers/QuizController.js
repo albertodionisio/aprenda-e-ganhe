@@ -3,6 +3,9 @@ const Wallet = require('../Models/Wallet');
 const Gamification = require('../Models/Gamification');
 const Notification = require('../Models/Notification');
 
+const SESSION_SIZE = 10;
+const AD_BOOST_AMOUNT = 3;
+
 const QuizController = {
     async listCategories(req, res) {
         try {
@@ -101,14 +104,14 @@ const QuizController = {
             }
 
             const questionRes = await client.query(
-                'SELECT category_id, correct_option, reward_amount, xp_amount, explanation FROM questions WHERE id = $1;',
+                'SELECT category_id, correct_option, reward_amount, xp_amount, explanation, question_text FROM questions WHERE id = $1;',
                 [questionId]
             );
             if (questionRes.rows.length === 0) {
                 await client.query('ROLLBACK');
                 return res.status(404).json({ error: "Pergunta não encontrada." });
             }
-            const { category_id, correct_option, reward_amount, xp_amount, explanation } = questionRes.rows[0];
+            const { correct_option, reward_amount, xp_amount, explanation } = questionRes.rows[0];
             const isCorrect = selectedOption.toUpperCase() === correct_option.toUpperCase();
             const xpEarned = isCorrect ? xp_amount : Math.ceil(xp_amount / 5);
             const currency = userCountry === 'Moçambique' ? 'MTN' : 'USD';
@@ -156,30 +159,36 @@ const QuizController = {
                 }
             }
 
-            const totalRes = await client.query(
-                `SELECT COUNT(*)::int AS total FROM questions WHERE category_id = $1 AND status = 'active';`,
-                [category_id]
-            );
-            const answeredRes = await client.query(
-                `SELECT COUNT(*)::int AS total FROM quiz_progress qp
-                 JOIN questions q ON q.id = qp.question_id
-                 WHERE qp.user_id = $1 AND q.category_id = $2;`,
-                [userId, category_id]
-            );
-            let quizCompletedBonus = 0;
-            const quizFullyCompleted = totalRes.rows[0].total > 0 && answeredRes.rows[0].total === totalRes.rows[0].total;
-            if (quizFullyCompleted) {
-                quizCompletedBonus = 0.20;
-                await Wallet.addAvailable(userId, quizCompletedBonus, currency, client);
-                await client.query(
-                    `INSERT INTO transactions (user_id, type, amount, currency, status) VALUES ($1, 'QUIZ_COMPLETE_BONUS', $2, $3, 'COMPLETED');`,
-                    [userId, quizCompletedBonus, currency]
+            const sessionComplete = progress.questions_answered > 0 && progress.questions_answered % SESSION_SIZE === 0;
+            let session = null;
+
+            if (sessionComplete) {
+                const reviewRes = await client.query(
+                    `SELECT qp.selected_option, qp.is_correct, q.question_text, q.correct_option, q.explanation, q.reward_amount
+                     FROM quiz_progress qp JOIN questions q ON q.id = qp.question_id
+                     WHERE qp.user_id = $1
+                     ORDER BY qp.id DESC LIMIT $2;`,
+                    [userId, SESSION_SIZE]
                 );
-                await Notification.create(userId, {
-                    category: 'reward',
-                    title: 'Quiz completo!',
-                    message: `Completaste todas as perguntas desta categoria e ganhaste um bónus de ${quizCompletedBonus.toFixed(2)} ${currency}.`
-                }, client);
+                const reviewItems = reviewRes.rows.reverse();
+                const correctCount = reviewItems.filter(r => r.is_correct).length;
+                const totalEarned = reviewItems.reduce((sum, r) => sum + (r.is_correct ? parseFloat(r.reward_amount) : 0), 0);
+                const maxPossible = reviewItems.reduce((sum, r) => sum + parseFloat(r.reward_amount), 0);
+
+                session = {
+                    correctCount,
+                    totalQuestions: reviewItems.length,
+                    totalEarned: parseFloat(totalEarned.toFixed(2)),
+                    maxPossible: parseFloat(maxPossible.toFixed(2)),
+                    currency,
+                    review: reviewItems.map(r => ({
+                        questionText: r.question_text,
+                        selectedOption: r.selected_option,
+                        correctOption: r.correct_option,
+                        isCorrect: r.is_correct,
+                        explanation: r.explanation
+                    }))
+                };
             }
 
             const firstQuiz = progress.questions_answered === 1;
@@ -224,8 +233,8 @@ const QuizController = {
                 xpEarned,
                 rewardPaid,
                 currency,
-                quizFullyCompleted,
-                quizCompletedBonus,
+                sessionComplete,
+                session,
                 progress: {
                     xp_total: progress.xp_total,
                     level: progress.level,
@@ -241,6 +250,46 @@ const QuizController = {
             return res.status(500).json({ error: "Erro no servidor ao processar resposta." });
         } finally {
             client.release();
+        }
+    },
+
+    async adBoost(req, res) {
+        try {
+            const userId = req.user.id;
+            const userCountry = req.user.country;
+            const currency = userCountry === 'Moçambique' ? 'MTN' : 'USD';
+
+            const { rows } = await pool.query(
+                'SELECT questions_answered, last_ad_boost_count FROM user_progress WHERE user_id = $1;',
+                [userId]
+            );
+            if (rows.length === 0) {
+                return res.status(404).json({ error: "Progresso não encontrado." });
+            }
+            const { questions_answered, last_ad_boost_count } = rows[0];
+            const currentSessionIndex = Math.floor(questions_answered / SESSION_SIZE);
+
+            if (questions_answered === 0 || questions_answered % SESSION_SIZE !== 0) {
+                return res.status(400).json({ error: "Só podes reforçar o valor logo após completares uma série de 10 perguntas." });
+            }
+            if (last_ad_boost_count >= currentSessionIndex) {
+                return res.status(400).json({ error: "Já usaste o reforço desta série." });
+            }
+
+            await Wallet.addAvailable(userId, AD_BOOST_AMOUNT, currency);
+            await pool.query(
+                `INSERT INTO transactions (user_id, type, amount, currency, status) VALUES ($1, 'AD_BOOST', $2, $3, 'COMPLETED');`,
+                [userId, AD_BOOST_AMOUNT, currency]
+            );
+            await pool.query(
+                'UPDATE user_progress SET last_ad_boost_count = $1 WHERE user_id = $2;',
+                [currentSessionIndex, userId]
+            );
+
+            return res.json({ message: "Bónus de anúncio aplicado!", bonus: AD_BOOST_AMOUNT, currency });
+        } catch (error) {
+            console.error(error);
+            return res.status(500).json({ error: "Erro ao aplicar reforço de anúncio." });
         }
     },
 
@@ -284,7 +333,7 @@ const QuizController = {
                 [quizId, categoryId, questionType || 'multiple_choice', videoUrl || null, questionText,
                     optionA || null, optionB || null, optionC || null, optionD || null,
                     correctOption.toUpperCase(), explanation || null,
-                    rewardAmount || 0.05, xpAmount || 10, difficultyLevel || 1]
+                    rewardAmount || 0.70, xpAmount || 10, difficultyLevel || 1]
             );
 
             return res.status(201).json({ message: "Pergunta cadastrada!", question: rows[0] });
