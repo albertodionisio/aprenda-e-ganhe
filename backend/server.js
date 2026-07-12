@@ -282,8 +282,18 @@ async function ensureExtraQuestions() {
     }
 }
 
+async function ensureMigrations() {
+    try {
+        await pool.query(`ALTER TABLE user_progress ADD COLUMN IF NOT EXISTS last_ad_boost_count INT DEFAULT 0;`);
+        await pool.query(`UPDATE questions SET reward_amount = 0.70 WHERE reward_amount <> 0.70;`);
+        console.log('Migrações aplicadas: coluna de reforço por anúncio + recompensa de 0.70 por pergunta.');
+    } catch (err) {
+        console.error('Erro ao aplicar migrações:', err);
+    }
+}
+
 const PORT = process.env.PORT || 3000;
-ensureSchema().then(ensureSeed).then(ensureExtraQuestions).then(() => {
+ensureSchema().then(ensureSeed).then(ensureExtraQuestions).then(ensureMigrations).then(() => {
     app.listen(PORT, () => {
         console.log(`Servidor rodando na porta ${PORT}`);
     });
