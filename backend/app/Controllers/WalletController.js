@@ -2,7 +2,6 @@ const pool = require('../../database/db');
 const Wallet = require('../Models/Wallet');
 const Notification = require('../Models/Notification');
 
-const MIN_USD = parseFloat(process.env.WITHDRAWAL_MIN_USD || '10');
 const MIN_MTN = parseFloat(process.env.WITHDRAWAL_MIN_MTN || '500');
 
 const WalletController = {
@@ -34,15 +33,15 @@ const WalletController = {
         const client = await pool.connect();
         try {
             const userId = req.user.id;
-            const { amount, currency, paymentMethod, paymentDetails } = req.body;
+            const { amount, paymentMethod, paymentDetails } = req.body;
+            const currency = 'MTN';
 
-            if (!amount || !currency || !paymentMethod) {
-                return res.status(400).json({ error: "Informe valor, moeda e método de pagamento." });
+            if (!amount || !paymentMethod) {
+                return res.status(400).json({ error: "Informe valor e método de pagamento." });
             }
 
-            const min = currency.toUpperCase() === 'MTN' ? MIN_MTN : MIN_USD;
-            if (parseFloat(amount) < min) {
-                return res.status(400).json({ error: `O valor mínimo de saque é ${min} ${currency.toUpperCase()}.` });
+            if (parseFloat(amount) < MIN_MTN) {
+                return res.status(400).json({ error: `O valor mínimo de saque é ${MIN_MTN} MTN.` });
             }
 
             await client.query('BEGIN');
@@ -56,19 +55,19 @@ const WalletController = {
             const { rows } = await client.query(
                 `INSERT INTO withdrawals (user_id, amount, currency, payment_method, payment_details, status)
                  VALUES ($1,$2,$3,$4,$5,'pending') RETURNING *;`,
-                [userId, amount, currency.toUpperCase(), paymentMethod, paymentDetails || null]
+                [userId, amount, currency, paymentMethod, paymentDetails || null]
             );
 
             await client.query(
                 `INSERT INTO transactions (user_id, type, amount, currency, status, payment_method)
                  VALUES ($1,'WITHDRAWAL',$2,$3,'PENDING',$4);`,
-                [userId, amount, currency.toUpperCase(), paymentMethod]
+                [userId, amount, currency, paymentMethod]
             );
 
             await Notification.create(userId, {
                 category: 'financial',
                 title: 'Pedido de saque recebido',
-                message: `O seu pedido de saque de ${amount} ${currency.toUpperCase()} está a ser processado.`
+                message: `O seu pedido de saque de ${amount} MTN está a ser processado.`
             }, client);
 
             await client.query('COMMIT');
