@@ -34,18 +34,13 @@ app.use('/api/premium', premiumRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 
-// Serve o frontend (HTML/CSS/JS estáticos) a partir do mesmo servidor,
-// para que backend e frontend fiquem hospedados juntos, num único serviço/domínio.
 const FRONTEND_DIR = path.join(__dirname, '../frontend/src');
 app.use(express.static(FRONTEND_DIR));
 
-// Página inicial (pública) abre automaticamente ao acessar a raiz do domínio
 app.get('/', (req, res) => {
     res.redirect('/views/Public/index.html');
 });
 
-// Tratamento de rota inexistente (só se aplica a chamadas de API não encontradas;
-// rotas de páginas .html não encontradas caem aqui também, como 404 comum)
 app.use((req, res) => {
     if (req.path.startsWith('/api/')) {
         return res.status(404).json({ error: "Rota não encontrada." });
@@ -53,7 +48,6 @@ app.use((req, res) => {
     return res.status(404).send('Página não encontrada.');
 });
 
-// Tratamento de erro genérico
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).json({ error: "Erro interno inesperado no servidor." });
@@ -79,7 +73,7 @@ async function ensureSeed() {
     try {
         const { rows } = await pool.query('SELECT COUNT(*)::int AS total FROM categories;');
         if (rows[0].total > 0) {
-            console.log('Categorias já existem, seed não é necessário.');
+            console.log('Categorias já existem, seed inicial não é necessário.');
             return;
         }
         console.log('A popular o banco de dados com dados iniciais...');
@@ -194,7 +188,7 @@ async function ensureSeed() {
         const settings = [
             ['platform_name', 'Aprenda e Ganhe'],
             ['default_language', 'pt'],
-            ['available_languages', 'pt,en'],
+            ['available_languages', 'pt'],
             ['withdrawal_min_usd', '10'],
             ['withdrawal_min_mtn', '500'],
             ['referral_bonus_percentage', '15'],
@@ -207,14 +201,89 @@ async function ensureSeed() {
             );
         }
 
-        console.log('Seed concluído com sucesso!');
+        console.log('Seed inicial concluído com sucesso!');
     } catch (err) {
         console.error('Erro ao popular dados iniciais:', err);
     }
 }
 
+async function ensureExtraQuestions() {
+    const MARKER = 'O João ganha 8000 MTN por mês e gasta sempre tudo antes do fim do mês, sem guardar nada. Qual seria o primeiro passo mais indicado para ele começar a organizar as finanças?';
+    try {
+        const check = await pool.query('SELECT id FROM questions WHERE question_text = $1;', [MARKER]);
+        if (check.rows.length > 0) {
+            console.log('Perguntas extra (cenários) já existem, nada a fazer.');
+            return;
+        }
+        console.log('A adicionar perguntas extra com cenários reais...');
+
+        const catRes = await pool.query('SELECT id, slug FROM categories;');
+        const catIds = {};
+        catRes.rows.forEach(r => { catIds[r.slug] = r.id; });
+
+        const quizRes = await pool.query('SELECT id, category_id FROM quizzes;');
+        const quizIds = {};
+        quizRes.rows.forEach(r => {
+            const slug = Object.keys(catIds).find(s => catIds[s] === r.category_id);
+            if (slug) quizIds[slug] = r.id;
+        });
+
+        const extraQuestions = [
+            ['financas', 'O João ganha 8000 MTN por mês e gasta sempre tudo antes do fim do mês, sem guardar nada. Qual seria o primeiro passo mais indicado para ele começar a organizar as finanças?', 'Pedir um empréstimo para os últimos dias do mês', 'Anotar todas as despesas durante um mês para perceber onde o dinheiro vai', 'Deixar de comprar comida', 'Ignorar o problema, pois é normal', 'B', 'Antes de qualquer plano, é preciso saber para onde o dinheiro está realmente a ir.'],
+            ['financas', 'A Ana recebeu um bónus inesperado no trabalho. Ela quer usá-lo de forma inteligente. Qual destas opções é a mais sensata?', 'Gastar tudo em roupa nova imediatamente', 'Guardar uma parte numa poupança e usar o resto com moderação', 'Emprestar tudo a um amigo sem registo', 'Comprar algo caro a crédito', 'B', 'Equilibrar poupança e uso consciente evita arrependimentos financeiros.'],
+            ['financas', 'O Carlos quer comprar uma mota que custa 45.000 MTN, mas só tem 10.000 MTN guardados. Qual é a abordagem mais responsável?', 'Comprar já, usando crédito com juros altos', 'Criar um plano de poupança mensal até juntar o valor', 'Pedir emprestado a vários amigos ao mesmo tempo', 'Desistir de qualquer poupança', 'B', 'Poupar de forma planeada evita dívidas e juros desnecessários.'],
+            ['financas', 'A Fátima paga a renda da casa todos os meses, mas às vezes esquece-se e paga com atraso, gerando multa. O que a ajudaria mais?', 'Pagar quando se lembrar, sem planear', 'Definir um dia fixo do mês e criar um lembrete', 'Parar de pagar a renda', 'Pedir para o senhorio esquecer a multa sempre', 'B', 'Rotinas e lembretes reduzem esquecimentos e custos extra com multas.'],
+            ['financas', 'O Miguel investiu todas as suas poupanças num único negócio de um amigo, sem pesquisar nada sobre o risco. O que ele fez de errado?', 'Nada, negócios de amigos são sempre seguros', 'Não diversificou o risco nem pesquisou antes de investir', 'Investiu pouco dinheiro', 'Guardou dinheiro a mais', 'B', 'Colocar todo o dinheiro num único investimento sem análise aumenta muito o risco de perda.'],
+            ['financas', 'A Sara ganha em MTN mas sonha em poupar para comprar algo em dólares no futuro. O que ela deve ter em conta?', 'As taxas de câmbio podem variar e afetar o valor poupado', 'O câmbio nunca muda', 'Não faz diferença nenhuma', 'É melhor não poupar nada', 'A', 'A variação cambial pode aumentar ou diminuir o poder de compra da poupança.'],
+            ['financas', 'O Paulo recebe o salário e logo no mesmo dia gasta em coisas não planeadas. O que um orçamento mensal ajudaria a evitar?', 'Nada, orçamento não serve para nada', 'Gastos por impulso sem controlo', 'Ganhar mais dinheiro automaticamente', 'Pagar menos impostos', 'B', 'Um orçamento ajuda a distinguir entre necessidades e gastos por impulso.'],
+
+            ['tecnologia', 'A Marta recebeu uma mensagem a dizer que ganhou um prémio e pedindo os dados do cartão bancário para "confirmar". O que ela deve fazer?', 'Enviar os dados rapidamente para não perder o prémio', 'Desconfiar e não partilhar dados bancários por mensagem', 'Reenviar a mensagem para todos os amigos', 'Ligar para o número da mensagem imediatamente', 'B', 'Pedidos de dados bancários por mensagem inesperada são um sinal clássico de fraude (phishing).'],
+            ['tecnologia', 'O Nelson usa a mesma senha simples em todas as suas contas online. Qual é o maior risco disso?', 'Nenhum, é mais prático assim', 'Se uma conta for invadida, todas as outras ficam vulneráveis também', 'As contas ficam mais rápidas', 'A internet fica mais lenta', 'B', 'Reutilizar senhas significa que uma única fuga de dados compromete várias contas ao mesmo tempo.'],
+            ['tecnologia', 'A Célia quer guardar fotos importantes sem risco de perder tudo se o telemóvel avariar. O que a nuvem (cloud) permite fazer?', 'Apagar as fotos automaticamente', 'Guardar cópias na internet, acessíveis de qualquer aparelho', 'Tornar o telemóvel mais lento', 'Impedir o uso da câmara', 'B', 'A nuvem serve exatamente para guardar cópias seguras fora do aparelho físico.'],
+            ['tecnologia', 'O Vasco usa Wi-Fi público num café para aceder ao banco online, sem qualquer proteção extra. Qual é o risco?', 'Nenhum, redes públicas são sempre seguras', 'Outras pessoas na mesma rede podem tentar intercetar os dados', 'O telemóvel carrega mais rápido', 'A app do banco fica mais bonita', 'B', 'Redes Wi-Fi públicas são mais fáceis de serem monitorizadas por terceiros mal-intencionados.'],
+            ['tecnologia', 'A Ivone recebeu um e-mail de um remetente desconhecido com um anexo estranho pedindo para abrir urgentemente. O que é mais prudente fazer?', 'Abrir imediatamente por curiosidade', 'Não abrir e verificar a origem antes de qualquer ação', 'Reencaminhar para todos os contactos', 'Responder com dados pessoais', 'B', 'Anexos inesperados são uma forma comum de espalhar vírus e malware.'],
+            ['tecnologia', 'O Bruno quer comprar um novo telemóvel e vê um anúncio com preço muito abaixo do mercado, pedindo pagamento antecipado por transferência. O que deve considerar?', 'Comprar de imediato, é uma pechincha', 'Desconfiar, pois preços muito abaixo do normal podem indicar burla', 'Pagar sem verificar o vendedor', 'Nunca comprar telemóveis online', 'B', 'Ofertas exageradamente baratas, com pagamento antecipado obrigatório, são um sinal de alerta comum.'],
+            ['tecnologia', 'A Rosa quer proteger melhor a conta do banco online. Qual destas opções aumenta mais a segurança?', 'Usar sempre a mesma senha simples', 'Ativar a autenticação de dois fatores (2FA)', 'Partilhar a senha co
+
+            ['emprego', 'O Hélder vai a uma entrevista de emprego e não sabe nada sobre a empresa nem sobre a vaga. Qual é a melhor preparação antes da entrevista?', 'Não se preparar, pois improvisar é melhor', 'Pesquisar sobre a empresa e rever os requisitos da vaga', 'Chegar atrasado de propósito', 'Levar o currículo de outra pessoa', 'B', 'Conhecer a empresa e a vaga mostra interesse genuíno e ajuda a responder melhor às perguntas.'],
+            ['emprego', 'A Teresa está a escrever o currículo e tem dúvidas sobre incluir experiências antigas sem relação com a vaga. O que é mais indicado?', 'Incluir tudo, mesmo sem relação nenhuma', 'Focar nas experiências mais relevantes para a vaga', 'Inventar experiências para parecer melhor', 'Deixar o currículo em branco', 'B', 'Um currículo direcionado à vaga é mais eficaz do que um currículo genérico com tudo.'],
+            ['emprego', 'O André recebeu uma crítica do seu chefe sobre um erro no trabalho. Qual é a atitude mais profissional?', 'Discutir e negar o erro sempre', 'Ouvir, entender o que pode melhorar e ajustar o comportamento', 'Ignorar completamente o comentário', 'Demitir-se imediatamente', 'B', 'Feedback, mesmo que difícil de ouvir, é uma oportunidade de crescimento profissional.'],
+            ['emprego', 'A Isabel quer criar uma rede de contactos profissionais mas não sabe por onde começar. O que é um bom primeiro passo?', 'Evitar falar com colegas de trabalho', 'Participar em eventos da área e manter contacto com colegas e ex-colegas', 'Esconder o que faz profissionalmente', 'Só falar com desconhecidos na rua', 'B', 'Networking cresce naturalmente ao manter e cultivar relações profissionais existentes.'],
+            ['emprego', 'O Domingos está a preparar-se para pedir um aumento de salário. Qual argumento é mais eficaz?', 'Dizer que precisa de mais dinheiro para despesas pessoais', 'Apresentar resultados concretos e contribuições para a empresa', 'Ameaçar sair se não receber o aumento', 'Comparar-se negativamente com colegas', 'B', 'Argumentos baseados em resultados e valor entregue à empresa são mais convincentes.'],
+            ['emprego', 'A Lurdes foi chamada para uma segunda entrevista mas não sabe o que vestir. Qual é geralmente a escolha mais segura?', 'Roupa de praia', 'Roupa adequada e alinhada com a cultura da empresa', 'Pijama, por ser mais confortável', 'Roupa de desporto', 'B', 'Vestir-se de forma adequada ao contexto da empresa transmite profissionalismo.'],
+            ['emprego', 'O Jaime perdeu o emprego recentemente e está desanimado para procurar um novo. O que pode ajudar a retomar a procura de forma mais eficaz?', 'Desistir de procurar', 'Atualizar o currículo e definir um plano diário de candidaturas', 'Candidatar-se apenas uma vez por mês', 'Esperar que o emprego apareça sozinho', 'B', 'Um plano estruturado de procura aumenta as chances de conseguir novas oportunidades.'],
+
+            ['livros', 'O Simão terminou de ler um livro mas já não se lembra dos pontos principais uma semana depois. O que o ajudaria a reter melhor o conteúdo?', 'Ler mais rápido da próxima vez', 'Fazer um resumo ou anotações após cada capítulo', 'Ler sempre o mesmo livro repetidamente sem pausa', 'Evitar pensar sobre o que leu', 'B', 'Resumir e anotar ajuda a fixar melhor as ideias principais na memória.'],
+            ['livros', 'A Beatriz quer escolher entre um livro de ficção e um livro técnico para aprender sobre um tema novo. Qual critério faz mais sentido usar?', 'Escolher apenas pela capa mais bonita', 'Considerar o objetivo: aprender factos ou explorar uma história', 'Escolher sempre o livro mais curto', 'Não ler nenhum dos dois', 'B', 'O objetivo da leitura (aprender ou entreter-se) ajuda a escolher o tipo de livro certo.'],
+            ['livros', 'O Filipe lê um livro de não-ficção sobre finanças, mas duvida se as informações são confiáveis. O que pode verificar?', 'Não verificar nada e aceitar tudo', 'A credibilidade do autor e as fontes citadas no livro', 'Só olhar para o número de páginas', 'A cor da capa do livro', 'B', 'Livros de não-ficção confiáveis costumam citar fontes e ter autores com credibilidade no tema.'],
+            ['livros', 'A Sónia quer começar a ler mais, mas sente que nunca tem tempo. O que poderia ajudá-la a criar o hábito?', 'Esperar até ter um dia totalmente livre', 'Reservar 10-15 minutos fixos por dia para leitura', 'Ler só quando estiver de férias', 'Desistir da ideia de ler', 'B', 'Pequenos blocos de tempo consistentes criam o hábito de leitura mais facilmente do que esperar por tempo livre.'],
+            ['livros', 'O Rui está a ler um romance e sente dificuldade em acompanhar os vários personagens. O que pode ajudar?', 'Desistir do livro imediatamente', 'Fazer pequenas anotações sobre cada personagem à medida que aparecem', 'Ler o livro ao contrário', 'Ignorar os nomes dos personagens', 'B', 'Anotar detalhes dos personagens ajuda a acompanhar histórias mais complexas.'],
+
+            ['desenvolvimento-pessoal', 'A Cristina tem uma lista longa de tarefas e não sabe por onde começar o dia. O que a ajudaria mais?', 'Fazer tudo ao mesmo tempo', 'Priorizar as tarefas mais importantes primeiro', 'Não fazer nenhuma tarefa', 'Escolher tarefas aleatoriamente', 'B', 'Priorizar ajuda a garantir que o mais importante é feito primeiro, mesmo com tempo limitado.'],
+            ['desenvolvimento-pessoal', 'O Adriano costuma adiar tarefas importantes até ao último momento, o que lhe causa muito stress. Que hábito o ajudaria mais?', 'Continuar a adiar sem mudar nada', 'Dividir tarefas grandes em passos menores e começar cedo', 'Trabalhar só sob pressão extrema', 'Evitar todas as tarefas difíceis para sempre', 'B', 'Dividir tarefas grandes em partes menores reduz a procrastinação e o stress.'],
+            ['desenvolvimento-pessoal', 'A Alzira quer melhorar a sua produtividade, mas costuma fazer várias coisas ao mesmo tempo (multitarefa). O que a ciência sugere sobre isso?', 'Multitarefa aumenta sempre a produtividade', 'Focar numa tarefa de cada vez costuma ser mais eficiente', 'Não faz diferença nenhuma', 'É impossível fazer uma tarefa de cada vez', 'B', 'Estudos mostram que alternar constantemente entre tarefas reduz a eficiência geral.'],
+            ['desenvolvimento-pessoal', 'O Elias dorme poucas horas todos os dias para "ter mais tempo produtivo". Qual é o efeito real disso a longo prazo?', 'Aumenta sempre a produtividade sem consequências', 'Reduz o foco, a energia e o desempenho geral', 'Não tem nenhum efeito', 'Só afeta o humor, nada mais', 'B', 'A privação de sono prejudica a concentração, memória e desempenho, mesmo que pareça "ganhar tempo".'],
+            ['desenvolvimento-pessoal', 'A Joana fica muito frustrada sempre que recebe uma crítica, mesmo que seja construtiva. O que a inteligência emocional ajudaria a desenvolver?', 'Ignorar todas as críticas para sempre', 'Reconhecer a emoção e responder de forma equilibrada, sem reagir por impulso', 'Evitar qualquer situação social', 'Reagir sempre com raiva imediata', 'B', 'A inteligência emocional envolve reconhecer as próprias emoções e geri-las de forma equilibrada.'],
+        ];
+        
+        for (const q of extraQuestions) {
+            const [slug, text, a, b, c, d, correct, explanation] = q;
+            if (!quizIds[slug] || !catIds[slug]) continue;
+            await pool.query(
+                `INSERT INTO questions (quiz_id, category_id, question_type, question_text, option_a, option_b, option_c, option_d, correct_option, explanation, reward_amount, xp_amount, difficulty_level)
+                 VALUES ($1,$2,'multiple_choice',$3,$4,$5,$6,$7,$8,$9,0.05,10,2);`,
+                [quizIds[slug], catIds[slug], text, a, b, c, d, correct, explanation]
+            );
+        }
+
+        console.log(`Foram adicionadas ${extraQuestions.length} perguntas extra com cenários reais!`);
+    } catch (err) {
+        console.error('Erro ao adicionar perguntas extra:', err);
+    }
+}
+
 const PORT = process.env.PORT || 3000;
-ensureSchema().then(ensureSeed).then(() => {
+ensureSchema().then(ensureSeed).then(ensureExtraQuestions).then(() => {
     app.listen(PORT, () => {
         console.log(`Servidor rodando na porta ${PORT}`);
     });
