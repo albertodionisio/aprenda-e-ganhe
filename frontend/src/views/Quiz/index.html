@@ -36,8 +36,14 @@
     <div id="loadingBox" class="card text-center"><p class="text-muted">Carregando pergunta...</p></div>
 
     <div id="quizCard" class="card" style="display:none;">
-        <span class="badge" id="categoryBadge"></span>
-        <h3 id="questionText" style="margin-top:10px;"></h3>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="badge" id="categoryBadge"></span>
+            <span id="timerText" style="font-weight:bold; font-size:18px;">30s</span>
+        </div>
+        <div style="background:#eee; border-radius:6px; height:6px; margin-top:8px; overflow:hidden;">
+            <div id="timerFill" style="height:100%; width:100%; background:#2ecc71; transition:width 1s linear;"></div>
+        </div>
+        <h3 id="questionText" style="margin-top:14px;"></h3>
         <div id="optionsContainer"></div>
         <p class="text-muted" id="rewardInfo" style="margin-top:8px;"></p>
     </div>
@@ -73,10 +79,14 @@
 <script>
 requireAuth();
 
+const QUESTION_TIME = 30;
+
 let currentQuestion = null;
 let answered = false;
 let categoriesData = [];
 let pendingSession = null;
+let timerInterval = null;
+let timeLeft = QUESTION_TIME;
 
 async function loadCategories() {
     try {
@@ -124,9 +134,50 @@ function show(id) {
     });
 }
 
+function stopTimer() {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+}
+
+function startTimer() {
+    stopTimer();
+    timeLeft = QUESTION_TIME;
+    document.getElementById('timerText').textContent = `${timeLeft}s`;
+    document.getElementById('timerFill').style.width = '100%';
+    document.getElementById('timerFill').style.background = '#2ecc71';
+
+    timerInterval = setInterval(() => {
+        timeLeft--;
+        document.getElementById('timerText').textContent = `${timeLeft}s`;
+        const pct = Math.max(0, (timeLeft / QUESTION_TIME) * 100);
+        document.getElementById('timerFill').style.width = `${pct}%`;
+        if (timeLeft <= 10) {
+            document.getElementById('timerFill').style.background = '#e74c3c';
+        }
+        if (timeLeft <= 0) {
+            stopTimer();
+            onTimeExpired();
+        }
+    }, 1000);
+}
+
+function onTimeExpired() {
+    if (answered) return;
+    answered = true;
+    document.querySelectorAll('.option-btn').forEach(b => b.disabled = true);
+    document.getElementById('questionText').insertAdjacentHTML(
+        'afterend',
+        '<p class="text-muted" id="timeoutMsg">⏰ Tempo esgotado! A avançar para a próxima pergunta...</p>'
+    );
+    setTimeout(() => loadNextQuestion(), 1800);
+}
+
 async function loadNextQuestion() {
     answered = false;
     pendingSession = null;
+    stopTimer();
     show('loadingBox');
     const categorySlug = document.getElementById('categorySelect').value;
     const endpoint = categorySlug ? `/quiz/next?categorySlug=${categorySlug}` : '/quiz/next';
@@ -160,6 +211,7 @@ async function loadNextQuestion() {
         });
 
         show('quizCard');
+        startTimer();
     } catch (err) {
         if (err.message && err.message.toLowerCase().includes('sem novas')) {
             show('emptyCard');
@@ -173,6 +225,7 @@ async function loadNextQuestion() {
 async function submitAnswer(selectedOption) {
     if (answered) return;
     answered = true;
+    stopTimer();
 
     document.querySelectorAll('.option-btn').forEach(b => b.disabled = true);
 
@@ -219,6 +272,7 @@ async function submitAnswer(selectedOption) {
         alert('Erro ao enviar resposta: ' + err.message);
         answered = false;
         document.querySelectorAll('.option-btn').forEach(b => b.disabled = false);
+        startTimer();
     }
 }
 
@@ -271,4 +325,4 @@ async function init() {
 init();
 </script>
 </body>
-    </html>
+            </html>
