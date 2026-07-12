@@ -24,19 +24,12 @@
         <h3>Solicitar Saque</h3>
         <div id="errorBox" class="error-box"></div>
         <form id="withdrawForm">
-            <label>Valor</label>
+            <label>Valor (MTN)</label>
             <input type="number" id="amount" step="0.01" required>
-
-            <label>Moeda</label>
-            <select id="currency">
-                <option value="MTN">MTN (Metical)</option>
-                <option value="USD">USD (Dólar)</option>
-            </select>
 
             <label>Método de pagamento</label>
             <select id="paymentMethod">
-                <option value="M-Pesa">M-Pesa</option>
-                <option value="e-Mola">e-Mola</option>
+                <option value="Vodacom M-Pesa">Vodacom M-Pesa</option>
                 <option value="PayPal">PayPal</option>
                 <option value="Banco">Transferência bancária</option>
             </select>
@@ -70,22 +63,14 @@
 <script src="../../services/api.js"></script>
 <script>
 requireAuth();
-const user = getUser();
 
 async function loadWallet() {
     try {
         const data = await apiRequest('/wallet/balance');
         const w = data.wallet;
-        const isMzOrOther = user && user.country === 'Moçambique';
-        const currency = isMzOrOther ? 'MTN' : 'USD';
-        const available = isMzOrOther ? w.balance_available_mtn : w.balance_available_usd;
-        const total = isMzOrOther ? w.total_earned_mtn : w.total_earned_usd;
 
-        document.getElementById('availableValue').textContent = `${parseFloat(available).toFixed(2)} ${currency}`;
-        document.getElementById('totalValue').textContent = `${parseFloat(total).toFixed(2)} ${currency}`;
-
-        // Pré-seleciona a moeda correta no formulário de saque
-        document.getElementById('currency').value = currency;
+        document.getElementById('availableValue').textContent = `${parseFloat(w.balance_available_mtn).toFixed(2)} MTN`;
+        document.getElementById('totalValue').textContent = `${parseFloat(w.total_earned_mtn).toFixed(2)} MTN`;
     } catch (err) { console.error(err); }
 }
 
@@ -133,7 +118,7 @@ document.getElementById('withdrawForm').addEventListener('submit', async (e) => 
     try {
         await apiRequest('/wallet/withdraw', 'POST', {
             amount: document.getElementById('amount').value,
-            currency: document.getElementById('currency').value,
+            currency: 'MTN',
             paymentMethod: document.getElementById('paymentMethod').value,
             paymentDetails: document.getElementById('paymentDetails').value
         });
