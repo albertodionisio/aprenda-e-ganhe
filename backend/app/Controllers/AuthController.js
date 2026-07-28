@@ -32,7 +32,7 @@ if (username.length < 4 || !/^[a-zA-Z0-9_]+$/.test(username)) {
 if (phone && !/^\+?[0-9]{8,15}$/.test(phone.replace(/\s/g, ''))) {
     return res.status(400).json({ error: "Número de telefone inválido. Use só dígitos (mínimo 8, ex: +258841234567)." });
 }
-            }
+            
 
             const emailExists = await User.findByEmail(email);
             if (emailExists) {
