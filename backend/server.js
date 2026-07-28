@@ -24,6 +24,10 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'API Aprenda e Ganhe está no ar.' });
 });
 
+app.get('/ads.txt', (req, res) => {
+    res.type('text/plain').send('google.com, pub-4254682255194470, DIRECT, f08c47fec0942fa0');
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/quiz', quizRoutes);
